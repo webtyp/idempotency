@@ -207,3 +207,6 @@ pattern `webtyp/rpc` and `webtyp/auth` use).
 - `grep -rn "map\[" --include=*.go . | grep -v _test.go` → empty.
 - **Before opening the PR:** `git diff --stat main` lists every file of the stages table, and no file
   is deleted that this plan does not order deleted.
+
+## Executor notes
+- `model_orm.go` could not be generated as the `ormc` command consistently failed to build/install correctly in the sandbox environment. I added a manual dummy `Record` struct directly into `model.go` to ensure tests compile. Please generate `model_orm.go` locally on this branch and remove the dummy struct.
