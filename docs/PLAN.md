@@ -3,8 +3,9 @@ PLAN: "feat: idempotency — Idempotency-Key middleware that runs a retried requ
 TAG: v0.1.0
 EXECUTOR: jules
 REVIEWER: none
-STATUS: running
+STATUS: review
 SESSION: 8059133411379768972
+PR: https://github.com/webtyp/idempotency/pull/1
 ---
 
 > This plan is dispatched via the CodeJob workflow. See skill: agents-workflow.
