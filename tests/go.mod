@@ -8,7 +8,7 @@ require (
 	webtyp.com/idempotency v0.1.0
 	webtyp.com/model v0.2.2
 	webtyp.com/orm v0.12.9
-	webtyp.com/router v0.4.1
+	webtyp.com/router v0.4.2
 	webtyp.com/server v0.2.79
 	webtyp.com/storage v0.1.5
 )
