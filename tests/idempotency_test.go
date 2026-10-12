@@ -1,236 +1,299 @@
 package tests
 
 import (
-	"bytes"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"webtyp.com/idempotency"
-	"webtyp.com/idempotency/migrate"
+	"webtyp.com/model"
 	"webtyp.com/orm"
 	"webtyp.com/router"
 	"webtyp.com/server/httpd"
 	"webtyp.com/storage/mem"
-	"webtyp.com/ddl"
 )
 
-type mockAuthn struct{}
+const (
+	headerUser = "X-Test-User"
+	userA      = "user-a"
+	userB      = "user-b"
+	bodyThing  = `{"ok":true}`
+	second     = int64(1000 * 1000 * 1000)
+)
 
-func (m mockAuthn) Authenticate(r *http.Request) (string, error) {
-	user := r.Header.Get("Test-User")
-	if user == "" {
-		return "user1", nil
-	}
-	return user, nil
+type env struct {
+	ts      *httptest.Server
+	store   *idempotency.Store
+	db      *orm.DB
+	calls   atomic.Int32 // runs of /thing, /other, /get and /fail
+	release chan struct{}
+	entered chan struct{}
 }
 
-func setupTestServer(t *testing.T) (*httpd.Server, *idempotency.Store, *orm.DB, *int) {
-	conn := mem.New()
-	db := orm.New(conn)
+func now() int64 { return time.Now().UnixNano() }
 
-	err := migrate.Migrate(conn, ddl.PostgresCompiler{}) // use dummy compiler
-	if err != nil && err.Error() != "not implemented" {
-		// Ignore compiler error if mem driver doesn't need it or it doesn't fail
-	}
+func setup(t *testing.T) *env { return setupClock(t, now) }
 
-	// For the sake of the test, let's create the table directly if needed
-	_, _ = db.Exec("CREATE TABLE idempotency_record (id TEXT PRIMARY KEY, method TEXT NOT NULL, path TEXT NOT NULL, state TEXT NOT NULL, status INTEGER NOT NULL, body BLOB, content_type TEXT, created_at INTEGER NOT NULL)")
-
-	nowFunc := func() int64 { return time.Now().UnixNano() }
-	store, err := idempotency.New(db, nowFunc)
+func setupClock(t *testing.T, clock func() int64) *env {
+	t.Helper()
+	e := &env{db: orm.New(mem.New()), release: make(chan struct{}), entered: make(chan struct{}, 1)}
+	store, err := idempotency.New(e.db, clock)
 	if err != nil {
-		t.Fatalf("failed to create store: %v", err)
+		t.Fatalf("New: %v", err)
 	}
+	e.store = store
 
 	srv := httpd.New(httpd.Config{
-		Authn: mockAuthn{},
+		TLS: httpd.TLSConfig{PlainHTTP: true},
+		Authn: func(next router.HandlerFunc) router.HandlerFunc {
+			return func(ctx router.Context) {
+				ctx.SetUserID(ctx.GetHeader(headerUser))
+				next(ctx)
+			}
+		},
+		Authorize: func(string, model.Resource, model.Action) bool { return true },
 	})
+	r := srv.Router()
+	r.Use(store.Middleware()) // BEFORE mounting the routes
 
-	srv.Router().Use(store.Middleware())
-
-	callCount := 0
-
-	srv.Router().Post("/thing", func(ctx router.Context) {
-		callCount++
-		ctx.WriteStatus(201)
+	thing := func(ctx router.Context) {
+		e.calls.Add(1)
 		ctx.SetHeader("Content-Type", "application/json")
-		ctx.Write([]byte(`{"success":true}`))
-	})
-
-	srv.Router().Post("/other", func(ctx router.Context) {
-		ctx.WriteStatus(200)
-		ctx.Write([]byte(`{"other":true}`))
-	})
-
-	blockCh := make(chan struct{})
-	srv.Router().Post("/block", func(ctx router.Context) {
-		<-blockCh
-		ctx.WriteStatus(200)
-		ctx.Write([]byte(`{"blocked":false}`))
-	})
-
-	srv.Router().Post("/error", func(ctx router.Context) {
+		ctx.WriteStatus(201)
+		ctx.Write([]byte(bodyThing))
+	}
+	r.Post("/thing", thing).Requires("thing", model.Create)
+	r.Post("/other", thing).Requires("thing", model.Create)
+	r.Get("/get", thing).Requires("thing", model.Read)
+	r.Post("/public", thing).Public()
+	r.Post("/fail", func(ctx router.Context) {
+		e.calls.Add(1)
 		ctx.WriteStatus(500)
-	})
+	}).Requires("thing", model.Create)
+	r.Post("/block", func(ctx router.Context) {
+		e.entered <- struct{}{}
+		<-e.release
+		e.calls.Add(1)
+		ctx.WriteStatus(201)
+		ctx.Write([]byte(bodyThing))
+	}).Requires("thing", model.Create)
 
-	srv.Router().Get("/get", func(ctx router.Context) {
-		callCount++
-		ctx.WriteStatus(200)
-	})
-
-	return srv, store, db, &callCount
+	h, err := srv.Handler()
+	if err != nil {
+		t.Fatalf("Handler: %v", err)
+	}
+	e.ts = httptest.NewServer(h)
+	t.Cleanup(e.ts.Close)
+	return e
 }
 
-func TestNoHeader(t *testing.T) {
-	srv, _, _, callCount := setupTestServer(t)
-	ts := httptest.NewServer(srv)
-	defer ts.Close()
-
-	req, _ := http.NewRequest("POST", ts.URL+"/thing", nil)
-	client := &http.Client{}
-
-	resp1, _ := client.Do(req)
-	resp2, _ := client.Do(req)
-
-	if resp1.StatusCode != 201 || resp2.StatusCode != 201 {
-		t.Errorf("expected 201, got %v and %v", resp1.StatusCode, resp2.StatusCode)
-	}
-	if *callCount != 2 {
-		t.Errorf("expected 2 calls, got %v", *callCount)
-	}
+type answer struct {
+	status   int
+	body     string
+	replayed string
 }
 
-func TestSameKeyTwice(t *testing.T) {
-	srv, _, _, callCount := setupTestServer(t)
-	ts := httptest.NewServer(srv)
-	defer ts.Close()
-
-	req, _ := http.NewRequest("POST", ts.URL+"/thing", nil)
-	req.Header.Set("Idempotency-Key", "key1")
-	client := &http.Client{}
-
-	resp1, _ := client.Do(req)
-	resp2, _ := client.Do(req)
-
-	if resp1.StatusCode != 201 || resp2.StatusCode != 201 {
-		t.Errorf("expected 201, got %v and %v", resp1.StatusCode, resp2.StatusCode)
+func (e *env) do(t *testing.T, method, path, user, key string) answer {
+	t.Helper()
+	req, err := http.NewRequest(method, e.ts.URL+path, nil)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if *callCount != 1 {
-		t.Errorf("expected 1 call, got %v", *callCount)
+	if user != "" {
+		req.Header.Set(headerUser, user)
 	}
-	if resp2.Header.Get("Idempotent-Replayed") != "true" {
-		t.Errorf("expected Idempotent-Replayed header on second response")
+	if key != "" {
+		req.Header.Set(router.HeaderIdempotencyKey, key)
 	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	b, _ := io.ReadAll(resp.Body)
+	return answer{status: resp.StatusCode, body: string(b), replayed: resp.Header.Get("Idempotent-Replayed")}
 }
 
-func TestSameKeyDifferentPath(t *testing.T) {
-	srv, _, _, _ := setupTestServer(t)
-	ts := httptest.NewServer(srv)
-	defer ts.Close()
-
-	req1, _ := http.NewRequest("POST", ts.URL+"/thing", nil)
-	req1.Header.Set("Idempotency-Key", "key2")
-	client := &http.Client{}
-	client.Do(req1)
-
-	req2, _ := http.NewRequest("POST", ts.URL+"/other", nil)
-	req2.Header.Set("Idempotency-Key", "key2")
-	resp2, _ := client.Do(req2)
-
-	if resp2.StatusCode != 422 {
-		t.Errorf("expected 422, got %v", resp2.StatusCode)
-	}
-
-	buf := new(bytes.Buffer)
-	buf.ReadFrom(resp2.Body)
-	if buf.String() != idempotency.MsgKeyReused {
-		t.Errorf("expected %v, got %v", idempotency.MsgKeyReused, buf.String())
+func (e *env) wantCalls(t *testing.T, n int32) {
+	t.Helper()
+	if got := e.calls.Load(); got != n {
+		t.Fatalf("handler ran %d times, want %d", got, n)
 	}
 }
 
-func TestSameKeyAnotherUser(t *testing.T) {
-	srv, _, _, callCount := setupTestServer(t)
-	ts := httptest.NewServer(srv)
-	defer ts.Close()
+// 1
+func TestNoHeaderRunsEveryTime(t *testing.T) {
+	e := setup(t)
+	e.do(t, "POST", "/thing", userA, "")
+	e.do(t, "POST", "/thing", userA, "")
+	e.wantCalls(t, 2)
+}
 
-	req1, _ := http.NewRequest("POST", ts.URL+"/thing", nil)
-	req1.Header.Set("Idempotency-Key", "key3")
-	req1.Header.Set("Test-User", "userA")
-	client := &http.Client{}
-	client.Do(req1)
-
-	req2, _ := http.NewRequest("POST", ts.URL+"/thing", nil)
-	req2.Header.Set("Idempotency-Key", "key3")
-	req2.Header.Set("Test-User", "userB")
-	client.Do(req2)
-
-	if *callCount != 2 {
-		t.Errorf("expected 2 calls, got %v", *callCount)
+// 2
+func TestSameKeyRunsOnceAndReplays(t *testing.T) {
+	e := setup(t)
+	first := e.do(t, "POST", "/thing", userA, "k1")
+	again := e.do(t, "POST", "/thing", userA, "k1")
+	e.wantCalls(t, 1)
+	if first.status != 201 || again.status != 201 {
+		t.Fatalf("status %d / %d, want 201 / 201", first.status, again.status)
+	}
+	if first.body != bodyThing || again.body != bodyThing {
+		t.Fatalf("bodies %q / %q, want %q", first.body, again.body, bodyThing)
+	}
+	if first.replayed != "" || again.replayed != "true" {
+		t.Fatalf("Idempotent-Replayed %q / %q, want \"\" / \"true\"", first.replayed, again.replayed)
 	}
 }
 
-func TestHandler500(t *testing.T) {
-	srv, _, db, _ := setupTestServer(t)
-	ts := httptest.NewServer(srv)
-	defer ts.Close()
-
-	req, _ := http.NewRequest("POST", ts.URL+"/error", nil)
-	req.Header.Set("Idempotency-Key", "key5")
-	client := &http.Client{}
-
-	resp1, _ := client.Do(req)
-	if resp1.StatusCode != 500 {
-		t.Errorf("expected 500, got %v", resp1.StatusCode)
+// 3
+func TestSameKeyOtherPathIs422(t *testing.T) {
+	e := setup(t)
+	e.do(t, "POST", "/thing", userA, "k1")
+	got := e.do(t, "POST", "/other", userA, "k1")
+	if got.status != 422 || got.body != idempotency.MsgKeyReused {
+		t.Fatalf("got %d %q, want 422 %q", got.status, got.body, idempotency.MsgKeyReused)
 	}
+	e.wantCalls(t, 1)
+}
 
-	var count int
-	db.QueryRow("SELECT count(*) FROM idempotency_record WHERE id = ?", "user1\x1fkey5").Scan(&count)
-	if count != 0 {
-		t.Errorf("expected 0 records, got %v", count)
+// 4
+func TestKeysAreScopedPerUser(t *testing.T) {
+	e := setup(t)
+	e.do(t, "POST", "/thing", userA, "k1")
+	got := e.do(t, "POST", "/thing", userB, "k1")
+	e.wantCalls(t, 2)
+	if got.replayed != "" {
+		t.Fatal("user B received user A's stored answer")
 	}
 }
 
-func TestGetWithKey(t *testing.T) {
-	srv, _, _, callCount := setupTestServer(t)
-	ts := httptest.NewServer(srv)
-	defer ts.Close()
+// 5
+func TestInProgressIs409ThenReplays(t *testing.T) {
+	e := setup(t)
+	done := make(chan answer)
+	go func() { done <- e.do(t, "POST", "/block", userA, "k1") }()
+	<-e.entered
 
-	req, _ := http.NewRequest("GET", ts.URL+"/get", nil)
-	req.Header.Set("Idempotency-Key", "key6")
-	client := &http.Client{}
+	got := e.do(t, "POST", "/block", userA, "k1")
+	if got.status != 409 || got.body != idempotency.MsgInProgress {
+		t.Fatalf("got %d %q, want 409 %q", got.status, got.body, idempotency.MsgInProgress)
+	}
 
-	client.Do(req)
-	client.Do(req)
+	close(e.release)
+	if first := <-done; first.status != 201 {
+		t.Fatalf("first request: %d, want 201", first.status)
+	}
+	third := e.do(t, "POST", "/block", userA, "k1")
+	if third.status != 201 || third.replayed != "true" {
+		t.Fatalf("third request: %d replayed=%q, want 201 replayed", third.status, third.replayed)
+	}
+	e.wantCalls(t, 1)
+}
 
-	if *callCount != 2 {
-		t.Errorf("expected 2 calls, got %v", *callCount)
+// 5b: concurrent first requests with the same key run the handler once (mem has no PK check).
+// The slow clock widens the gap between "look up" and "insert" so an unserialised store fails.
+func TestConcurrentSameKeyRunsOnce(t *testing.T) {
+	e := setupClock(t, func() int64 { time.Sleep(5 * time.Millisecond); return now() })
+	close(e.release)
+	e.entered = make(chan struct{}, 20)
+	results := make(chan answer, 20)
+	for i := 0; i < 20; i++ {
+		go func() { results <- e.do(t, "POST", "/block", userA, "k1") }()
+	}
+	for i := 0; i < 20; i++ {
+		<-results
+	}
+	e.wantCalls(t, 1)
+}
+
+// 6
+func TestStaleInProgressRunsAgain(t *testing.T) {
+	e := setup(t)
+	stale := &idempotency.Record{Id: userA + "\x1f" + "k1", Method: "POST", Path: "/thing", State: "in_progress", CreatedAt: now() - 61*second}
+	if err := e.db.Create(stale); err != nil {
+		t.Fatal(err)
+	}
+	got := e.do(t, "POST", "/thing", userA, "k1")
+	if got.status != 201 {
+		t.Fatalf("got %d, want 201", got.status)
+	}
+	e.wantCalls(t, 1)
+}
+
+// 7
+func TestServerErrorIsNotStored(t *testing.T) {
+	e := setup(t)
+	if got := e.do(t, "POST", "/fail", userA, "k1"); got.status != 500 {
+		t.Fatalf("got %d, want 500", got.status)
+	}
+	e.do(t, "POST", "/fail", userA, "k1")
+	e.wantCalls(t, 2)
+}
+
+// 8
+func TestGetIsNeverStored(t *testing.T) {
+	e := setup(t)
+	e.do(t, "GET", "/get", userA, "k1")
+	e.do(t, "GET", "/get", userA, "k1")
+	e.wantCalls(t, 2)
+}
+
+// Anonymous callers share no scope: their keys are not stored.
+func TestAnonymousPassesThrough(t *testing.T) {
+	e := setup(t)
+	e.do(t, "POST", "/public", "", "k1")
+	got := e.do(t, "POST", "/public", "", "k1")
+	e.wantCalls(t, 2)
+	if got.replayed != "" {
+		t.Fatal("anonymous caller received a stored answer")
 	}
 }
 
+// 9
 func TestPurge(t *testing.T) {
-	_, store, db, _ := setupTestServer(t)
-
-	now := time.Now().UnixNano()
-
-	db.Exec("INSERT INTO idempotency_record (id, method, path, state, status, created_at) VALUES (?, ?, ?, ?, ?, ?)", "id1", "POST", "/a", "done", 200, now - 100)
-	db.Exec("INSERT INTO idempotency_record (id, method, path, state, status, created_at) VALUES (?, ?, ?, ?, ?, ?)", "id2", "POST", "/b", "done", 200, now + 100)
-	db.Exec("INSERT INTO idempotency_record (id, method, path, state, status, created_at) VALUES (?, ?, ?, ?, ?, ?)", "id3", "POST", "/c", "in_progress", 200, now - 100)
-
-	deleted, _ := store.Purge(now)
-
-	if deleted != 1 {
-		t.Errorf("expected to delete 1 record, deleted %v", deleted)
+	e := setup(t)
+	t0 := now()
+	for _, r := range []*idempotency.Record{
+		{Id: "old-done", Method: "POST", Path: "/a", State: "done", Status: 200, CreatedAt: t0 - 100},
+		{Id: "new-done", Method: "POST", Path: "/b", State: "done", Status: 200, CreatedAt: t0 + 100},
+		{Id: "fresh-running", Method: "POST", Path: "/c", State: "in_progress", CreatedAt: t0 - 100},
+		{Id: "stale-running", Method: "POST", Path: "/d", State: "in_progress", CreatedAt: t0 - 61*second},
+	} {
+		if err := e.db.Create(r); err != nil {
+			t.Fatal(err)
+		}
+	}
+	n, err := e.store.Purge(t0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 2 {
+		t.Fatalf("purged %d, want 2", n)
+	}
+	left, err := idempotency.ReadAllRecord(e.db.Query(&idempotency.Record{}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(left) != 2 {
+		t.Fatalf("%d records left, want 2", len(left))
+	}
+	for _, r := range left {
+		if r.Id != "new-done" && r.Id != "fresh-running" {
+			t.Fatalf("record %q should have been purged", r.Id)
+		}
 	}
 }
 
-func TestNewWithNil(t *testing.T) {
-	_, err := idempotency.New(nil, time.Now)
-	if err == nil {
-		t.Errorf("expected error, got nil")
+// 10
+func TestNewRequiresDBAndNow(t *testing.T) {
+	if _, err := idempotency.New(nil, now); err == nil {
+		t.Fatal("New(nil db) returned no error")
 	}
-	if err.Error() != "idempotency: db and now are required" {
-		t.Errorf("unexpected error message: %v", err)
+	if _, err := idempotency.New(orm.New(mem.New()), nil); err == nil {
+		t.Fatal("New(nil now) returned no error")
 	}
 }

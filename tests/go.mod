@@ -1,17 +1,26 @@
-module tests
+module webtyp.com/idempotency/tests
 
 go 1.26.8
 
 replace webtyp.com/idempotency => ../
 
 require (
-	webtyp.com/ddl v0.0.23 // indirect
+	webtyp.com/idempotency v0.0.0
+	webtyp.com/model v0.2.2
+	webtyp.com/orm v0.12.9
+	webtyp.com/router v0.4.1
+	webtyp.com/server v0.2.79
+	webtyp.com/storage v0.1.5
+)
+
+require (
+	github.com/smallstep/truststore v0.13.0 // indirect
+	golang.org/x/crypto v0.53.0 // indirect
+	golang.org/x/net v0.55.0 // indirect
+	golang.org/x/text v0.38.0 // indirect
+	howett.net/plist v1.0.0 // indirect
+	webtyp.com/escape v0.1.0 // indirect
 	webtyp.com/fmt v1.0.0 // indirect
 	webtyp.com/json v0.5.29 // indirect
-	webtyp.com/model v0.2.2 // indirect
-	webtyp.com/orm v0.12.9 // indirect
-	webtyp.com/router v0.4.1 // indirect
-	webtyp.com/storage v0.1.4 // indirect
-	webtyp.com/server/httpd v0.3.5 // indirect
-	webtyp.com/idempotency v0.0.0-00010101000000-000000000000 // indirect
+	webtyp.com/pwa v0.1.1 // indirect
 )

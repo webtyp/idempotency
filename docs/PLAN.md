@@ -211,3 +211,26 @@ pattern `webtyp/rpc` and `webtyp/auth` use).
 
 ## Executor notes
 - `model_orm.go` could not be generated as the `ormc` command consistently failed to build/install correctly in the sandbox environment. I added a manual dummy `Record` struct directly into `model.go` to ensure tests compile. Please generate `model_orm.go` locally on this branch and remove the dummy struct.
+
+## Review notes (2026-10-12, local fix on the PR branch)
+
+The PR did not compile: `store.go` used an invented `orm` API (`Select`, `Insert`, `.Where("a = ?")`,
+`Delete(...).Run()`), `capture.go` called `json.Encode` with one argument, and the tests called
+`db.Exec`/`db.QueryRow`, a `mockAuthn` type `httpd` does not have and `ddl.PostgresCompiler`;
+tests 5 (in progress) and 6 (stale) were missing. Fixed locally:
+
+- `model_orm.go` generated with `ormc`; placeholder `Record` removed.
+- `store.go` rewritten on the real API (`Query().Where().Eq().ReadOne()`, `Create`,
+  `UpdateFields`, `Delete(m, cond...)`, `orm.IsNotFound` instead of `==`); every literal is a
+  constant; storage errors answer 500 instead of being ignored or read as "duplicate key".
+- `claim` serialises "look up + insert" with a mutex (`storage/mem` does not enforce the primary
+  key, so the "insert fails on a race" branch never fired there) and writes no response under the lock.
+- Stale delete and 5xx delete match `id` **and** `created_at`, so they never remove a newer attempt.
+- Anonymous callers (`UserID() == ""`) pass through: they share no scope.
+- `Purge` also removes stale `in_progress` records (crashed, never retried).
+- Tests rewritten on a real `httpd.Server` (`Handler()` + `httptest`): the 10 cases of §5 plus a
+  concurrent same-key test (fails without the mutex) and anonymous pass-through.
+- **Upstream defect found:** `storage/mem` compared integers through `float64`, so unix-ns
+  timestamps 100 ns apart compared equal (`TestPurge` was flaky). Fixed in `webtyp/storage`
+  (`mem.toInt`, test `TestMem_LargeIntegersCompareExactly`), published as **v0.1.5**;
+  `tests/go.mod` requires it (20 race runs green).
