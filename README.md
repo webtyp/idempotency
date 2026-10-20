@@ -10,7 +10,7 @@ The header name is `router.HeaderIdempotencyKey`; the client side is `rpc.Caller
 ## Usage
 
 ```go
-store, _ := idempotency.New(orm.New(conn), time.Now)
+store, _ := idempotency.New(orm.New(conn), time.NowNano)
 srv.Router().Use(store.Middleware())          // BEFORE mounting routes
 _ = rpc.Mount(srv.Router(), rpc.DefaultPrefix, modules...)
 ```

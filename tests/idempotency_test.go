@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"webtyp.com/idempotency"
+	wtime "webtyp.com/time"
 	"webtyp.com/model"
 	"webtyp.com/orm"
 	"webtyp.com/router"
@@ -21,8 +22,9 @@ const (
 	userA      = "user-a"
 	userB      = "user-b"
 	bodyThing  = `{"ok":true}`
-	second     = int64(1000 * 1000 * 1000)
 )
+
+var second = wtime.Unix(1).Nano()
 
 type env struct {
 	ts      *httptest.Server
@@ -33,11 +35,11 @@ type env struct {
 	entered chan struct{}
 }
 
-func now() int64 { return time.Now().UnixNano() }
+func now() wtime.Nano { return wtime.NowNano() }
 
 func setup(t *testing.T) *env { return setupClock(t, now) }
 
-func setupClock(t *testing.T, clock func() int64) *env {
+func setupClock(t *testing.T, clock func() wtime.Nano) *env {
 	t.Helper()
 	e := &env{db: orm.New(mem.New()), release: make(chan struct{}), entered: make(chan struct{}, 1)}
 	store, err := idempotency.New(e.db, clock)
@@ -197,7 +199,7 @@ func TestInProgressIs409ThenReplays(t *testing.T) {
 // 5b: concurrent first requests with the same key run the handler once (mem has no PK check).
 // The slow clock widens the gap between "look up" and "insert" so an unserialised store fails.
 func TestConcurrentSameKeyRunsOnce(t *testing.T) {
-	e := setupClock(t, func() int64 { time.Sleep(5 * time.Millisecond); return now() })
+	e := setupClock(t, func() wtime.Nano { time.Sleep(5 * time.Millisecond); return now() })
 	close(e.release)
 	e.entered = make(chan struct{}, 20)
 	results := make(chan answer, 20)
@@ -213,7 +215,7 @@ func TestConcurrentSameKeyRunsOnce(t *testing.T) {
 // 6
 func TestStaleInProgressRunsAgain(t *testing.T) {
 	e := setup(t)
-	stale := &idempotency.Record{Id: userA + "\x1f" + "k1", Method: "POST", Path: "/thing", State: "in_progress", CreatedAt: now() - 61*second}
+	stale := &idempotency.Record{Id: userA + "\x1f" + "k1", Method: "POST", Path: "/thing", State: "in_progress", CreatedAt: now() - wtime.Nano(61)*second}
 	if err := e.db.Create(stale); err != nil {
 		t.Fatal(err)
 	}
@@ -261,7 +263,7 @@ func TestPurge(t *testing.T) {
 		{Id: "old-done", Method: "POST", Path: "/a", State: "done", Status: 200, CreatedAt: t0 - 100},
 		{Id: "new-done", Method: "POST", Path: "/b", State: "done", Status: 200, CreatedAt: t0 + 100},
 		{Id: "fresh-running", Method: "POST", Path: "/c", State: "in_progress", CreatedAt: t0 - 100},
-		{Id: "stale-running", Method: "POST", Path: "/d", State: "in_progress", CreatedAt: t0 - 61*second},
+		{Id: "stale-running", Method: "POST", Path: "/d", State: "in_progress", CreatedAt: t0 - wtime.Nano(61)*second},
 	} {
 		if err := e.db.Create(r); err != nil {
 			t.Fatal(err)

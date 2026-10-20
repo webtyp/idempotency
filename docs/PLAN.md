@@ -144,6 +144,10 @@ Docs: `README.md` and `docs/*` show `New(db, time.NowNano)`.
 
 The only consumer is `webtyp/dbsync`; it is updated after this publishes (not part of this plan).
 
+## Executor notes
+
+No `AGENTS.md` file was found in the repository, so it was skipped for documentation updates.
+
 ## Stage 4 — docs
 
 In `README.md`, `docs/ARCHITECTURE.md` and `AGENTS.md`, replace any text saying an instant is "unix seconds" /

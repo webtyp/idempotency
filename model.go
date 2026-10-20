@@ -12,6 +12,6 @@ var RecordModel = model.Definition{
 		{Name: "status", Type: model.Int(), NotNull: true},     // stored response status (done)
 		{Name: "body", Type: model.Blob()},                     // stored response body (done)
 		{Name: "content_type", Type: model.Text()},             // stored Content-Type (done)
-		{Name: "created_at", Type: model.Int(), NotNull: true}, // unix ns
+		{Name: "created_at", Type: model.NanoTime(), NotNull: true}, // unix ns
 	},
 }

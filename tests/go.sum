@@ -11,6 +11,8 @@ gopkg.in/check.v1 v0.0.0-20161208181325-20d25e280405/go.mod h1:Co6ibVJAznAaIkqp8
 gopkg.in/yaml.v1 v1.0.0-20140924161607-9f9df34309c0/go.mod h1:WDnlLJ4WF5VGsH/HVa3CI79GS0ol3YnhVnKP89i0kNg=
 howett.net/plist v1.0.0 h1:7CrbWYbPPO/PyNy38b2EB/+gYbjCe2DXBxgtOOZbSQM=
 howett.net/plist v1.0.0/go.mod h1:lqaXoTrLY4hg8tnEzNru53gicrbv7rrk+2xJA/7hw9g=
+webtyp.com/calendar v0.1.0 h1:lI0i74Ghee+fnYDx2P6XFJQKLyJKTeQbg4eT9IK8980=
+webtyp.com/calendar v0.1.0/go.mod h1:lHsVxVDpLBAGKovlPew9d5c0YiMoNQxfUHG8OfXDhHk=
 webtyp.com/escape v0.1.0 h1:LvAiviOM15TUiJBUK4CO7TLp3oAQ+GoKunaVTVKsklA=
 webtyp.com/escape v0.1.0/go.mod h1:77ZTqob2u8NA2FUu723FzajXwcTk4ddlWWLXtKyOfO4=
 webtyp.com/fmt v1.0.0 h1:W0vMMGC6ezg1q2LarAEaVnNvZ26hVqzZdQQH1wcNogM=
@@ -29,3 +31,5 @@ webtyp.com/server v0.2.86 h1:7gWX9qSAGuIyUGeq2id7Moxiy0gCho31woz7QAAQf0U=
 webtyp.com/server v0.2.86/go.mod h1:YNOtbypFl9fA9xR2caCNh6WS/J8ibfSnPpguvARFkps=
 webtyp.com/storage v0.1.8 h1:vEws2tVeJsYN5b+KLjWsxuCX2l68cuqfnUCujHclhBw=
 webtyp.com/storage v0.1.8/go.mod h1:7bwMdHoQnAO5l7weZyB6LR35TLzATR5EcWrW/pXWa5c=
+webtyp.com/time v0.6.2 h1:54zst3g0xCB5GBSH/6j9P9EmvgPRs4MDCqFyDe2L/yc=
+webtyp.com/time v0.6.2/go.mod h1:dTCSLhAwMfO+4UjixTboRsXdjss59S5/8bpB9+lqc0o=
