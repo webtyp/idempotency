@@ -30,7 +30,7 @@ The middleware, for every request:
    handler, even on a backend without a primary-key check (`storage/mem`). Across processes the
    primary key does it: a failed insert answers `409`. The response is written after the lock is
    released.
-   - **not found** → insert `{id, method, path, state: "in_progress", created_at: now()}`; run the
+   - **not found** → insert `{id, method, path, state: "in_progress", created_at: time.NowNano()}`; run the
      next handler through the **capturing context**; then update the record (only `state`,
      `status`, `body`, `content_type`) to `done` with the captured status (200 when the handler
      never called `WriteStatus`), body and content type.

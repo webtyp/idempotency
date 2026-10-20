@@ -2,8 +2,10 @@
 PLAN: "refactor!: typed instants of webtyp/time v0.6 in idempotency — every instant field is time.Unix or time.Nano, no unit arithmetic"
 EXECUTOR: jules
 REVIEWER: none
-STATUS: running
+STATUS: review
 SESSION: 12126260320661303047
+PR: https://github.com/webtyp/idempotency/pull/2
+REVIEWED_COMMIT: 42697f843f91500c34a542b2a92ae2b94a104569
 ---
 
 > Read AGENTS.md at the repo root before any change. This plan is complete: do not guess; if something does not fit, stop and ask in the PR.
@@ -143,6 +145,10 @@ import if the file still uses it for sleeps.
 Docs: `README.md` and `docs/*` show `New(db, time.NowNano)`.
 
 The only consumer is `webtyp/dbsync`; it is updated after this publishes (not part of this plan).
+
+## Executor notes
+
+No `AGENTS.md` file was found in the repository, so it was skipped for documentation updates.
 
 ## Stage 4 — docs
 

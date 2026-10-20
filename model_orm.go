@@ -5,6 +5,7 @@ package idempotency
 import (
 	"webtyp.com/model"
 	"webtyp.com/orm"
+	"webtyp.com/time"
 )
 
 type Record struct {
@@ -15,7 +16,7 @@ type Record struct {
 	Status      int64
 	Body        []byte
 	ContentType string
-	CreatedAt   int64
+	CreatedAt   time.Nano
 }
 
 func (m *Record) ModelName() string { return "idempotency_record" }
@@ -23,7 +24,7 @@ func (m *Record) ModelName() string { return "idempotency_record" }
 func (m *Record) Schema() []model.Field { return RecordModel.Fields }
 
 func (m *Record) Pointers() []any {
-	return []any{&m.Id, &m.Method, &m.Path, &m.State, &m.Status, &m.Body, &m.ContentType, &m.CreatedAt}
+	return []any{&m.Id, &m.Method, &m.Path, &m.State, &m.Status, &m.Body, &m.ContentType, (*int64)(&m.CreatedAt)}
 }
 
 func (m *Record) IsNil() bool { return m == nil }
@@ -36,7 +37,7 @@ func (m *Record) EncodeFields(w model.FieldWriter) {
 	w.Int("status", m.Status)
 	w.Bytes("body", m.Body)
 	w.String("content_type", m.ContentType)
-	w.Int("created_at", m.CreatedAt)
+	w.Int("created_at", int64(m.CreatedAt))
 }
 
 func (m *Record) DecodeFields(r model.FieldReader) {
@@ -62,7 +63,7 @@ func (m *Record) DecodeFields(r model.FieldReader) {
 		m.ContentType = v
 	}
 	if v, ok := r.Int("created_at"); ok {
-		m.CreatedAt = v
+		m.CreatedAt = time.Nano(v)
 	}
 }
 
