@@ -5,8 +5,8 @@ go 1.26.8
 replace webtyp.com/idempotency => ../
 
 require (
-	webtyp.com/idempotency v0.1.5
-	webtyp.com/model v0.2.11
+	webtyp.com/idempotency v0.1.6
+	webtyp.com/model v0.2.12
 	webtyp.com/orm v0.12.20
 	webtyp.com/router v0.4.12
 	webtyp.com/server v0.2.99
