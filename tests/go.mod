@@ -6,8 +6,8 @@ replace webtyp.com/idempotency => ../
 
 require (
 	webtyp.com/idempotency v0.1.3
-	webtyp.com/model v0.2.9
-	webtyp.com/orm v0.12.9
+	webtyp.com/model v0.2.10
+	webtyp.com/orm v0.12.20
 	webtyp.com/router v0.4.9
 	webtyp.com/server v0.2.86
 	webtyp.com/storage v0.1.8
