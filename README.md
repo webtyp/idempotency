@@ -19,7 +19,7 @@ _ = rpc.Mount(srv.Router(), rpc.DefaultPrefix, modules...)
   is registered.
 - `Use` middlewares run behind authentication and the RBAC gate, so a rejected request never
   touches the store.
-- Create the table with `migrate.Migrate(conn, compiler)`.
+- Create the table with `migrate.Migrate(conn, compiler)`, which uses `ddl.Sync` to also add any missing columns ([Flow diagram](https://github.com/webtyp/ddl/blob/main/docs/diagrams/SYNC_FLOW.md)).
 - Call `store.Purge(now - 24h)` periodically (Stripe keeps keys 24 h).
 
 ## Rules
