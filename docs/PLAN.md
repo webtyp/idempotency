@@ -2,8 +2,10 @@
 PLAN: "fix: migrate with ddl.Sync so a new field reaches an existing table"
 EXECUTOR: jules
 REVIEWER: none
-STATUS: running
+STATUS: review
 SESSION: 12464057737415319270
+PR: https://github.com/webtyp/idempotency/pull/3
+REVIEWED_COMMIT: e8a635f11a5b22da40dceffafcf144ff9fd3dfbf
 ---
 
 > Read AGENTS.md at the repo root before any change.
