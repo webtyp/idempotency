@@ -8,7 +8,7 @@ require (
 	webtyp.com/ddl v0.0.39
 	webtyp.com/idempotency v0.1.14
 	webtyp.com/model v0.2.12
-	webtyp.com/orm v0.12.20
+	webtyp.com/orm v0.12.25
 	webtyp.com/router v0.4.17
 	webtyp.com/server v0.2.105
 	webtyp.com/storage v0.1.18
