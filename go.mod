@@ -8,7 +8,7 @@ require (
 	webtyp.com/model v0.2.12
 	webtyp.com/orm v0.12.25
 	webtyp.com/router v0.4.17
-	webtyp.com/time v0.6.2
+	webtyp.com/time v0.6.4
 )
 
 require (
