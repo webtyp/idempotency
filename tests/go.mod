@@ -6,7 +6,7 @@ replace webtyp.com/idempotency => ../
 
 require (
 	webtyp.com/ddl v0.0.46
-	webtyp.com/idempotency v0.1.20
+	webtyp.com/idempotency v0.1.21
 	webtyp.com/model v0.2.15
 	webtyp.com/orm v0.12.28
 	webtyp.com/router v0.4.19
