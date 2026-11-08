@@ -11,7 +11,7 @@ require (
 	webtyp.com/orm v0.12.28
 	webtyp.com/router v0.4.19
 	webtyp.com/server v0.2.119
-	webtyp.com/storage v0.1.18
+	webtyp.com/storage v0.1.19
 	webtyp.com/time v0.6.4
 )
 
