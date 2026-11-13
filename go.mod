@@ -15,6 +15,6 @@ require (
 	webtyp.com/calendar v0.1.0 // indirect
 	webtyp.com/crud v0.0.5 // indirect
 	webtyp.com/escape v0.1.0 // indirect
-	webtyp.com/fmt v1.0.0 // indirect
+	webtyp.com/fmt v1.0.1 // indirect
 	webtyp.com/storage v0.1.19 // indirect
 )
